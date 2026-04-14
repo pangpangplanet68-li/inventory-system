@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>進貨管理系統</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+<body class="p-4">
+  <div id="loading" class="container has-text-centered" style="padding-top: 100px;">
+    <button class="button is-loading is-white is-large"></button>
+    <p>系統初始化中...</p>
+  </div>
+
+  <div id="app" class="container" style="display:none;">
+    <div class="card">
+      <header class="card-header has-background-link">
+        <p class="card-header-title has-text-white">📝 新增進貨紀錄</p>
+      </header>
+      <div class="card-content">
+        <p class="mb-4">歡迎，<span id="userName" class="has-text-weight-bold">管理員</span></p>
+        <form id="purchaseForm">
+          <div class="field">
+            <label class="label">採購人員</label>
+            <input class="input" list="buyer-list" name="buyer" required>
+            <datalist id="buyer-list"></datalist>
+          </div>
+          <div class="field">
+            <label class="label">供應商</label>
+            <div class="select is-fullwidth">
+              <select name="vendor" id="vendor-select" required></select>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">品項描述</label>
+            <textarea class="textarea" name="itemDescription" required></textarea>
+          </div>
+          <div class="field">
+            <label class="label">總金額</label>
+            <input class="input" type="number" name="amount" required>
+          </div>
+          <button type="submit" id="submitBtn" class="button is-link is-fullwidth is-large">確認送出</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- 配置區 ---
+    const GAS_URL = "你的新GAS網址"; // 貼上剛才第一步複製的網址
+
+    // 通用呼叫 GAS 函數
+    async function callGAS(action, formData = null) {
+      const response = await fetch(GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: action, formData: formData })
+      });
+      return await response.json();
+    }
+
+    window.onload = async () => {
+      try {
+        const serverData = await callGAS('getInitialData');
+        await liff.init({ liffId: serverData.liffId });
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        const profile = await liff.getProfile();
+        if (!serverData.adminList.includes(profile.userId)) {
+          alert("您沒有權限使用此系統");
+          return;
+        }
+
+        // 初始化下拉選單
+        document.getElementById('userName').innerText = profile.displayName;
+        serverData.buyers.forEach(b => document.getElementById('buyer-list').innerHTML += `<option value="${b}">`);
+        serverData.vendors.forEach(v => document.getElementById('vendor-select').innerHTML += `<option value="${v}">${v}</option>`);
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+
+        // 綁定表單送出事件
+        document.getElementById('purchaseForm').onsubmit = async (e) => {
+          e.preventDefault();
+          const btn = document.getElementById('submitBtn');
+          btn.classList.add('is-loading');
+          
+          const formData = Object.fromEntries(new FormData(e.target));
+          await callGAS('processForm', formData);
+          
+          btn.classList.remove('is-loading');
+          alert('✅ 送出成功！');
+          e.target.reset();
+        };
+
+      } catch (err) {
+        alert("系統載入出錯: " + err.message);
+      }
+    };
+  </script>
+</body>
+</html>
