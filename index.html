@@ -59,15 +59,20 @@
     </div>
 
     <div class="columns is-mobile">
-      <div class="column is-5">
+      <div class="column is-4">
         <label class="label">數量</label>
         <input class="input" type="number" id="qty" value="1">
       </div>
       <div class="column">
-        <label class="label">廠商 (Vendor)</label>
-        <input class="input" list="vendor-list" id="vendor" placeholder="選擇或輸入廠商">
-        <datalist id="vendor-list"></datalist>
+        <label class="label">售價</label>
+        <input class="input" type="number" id="price" placeholder="0">
       </div>
+    </div>
+
+    <div class="field">
+      <label class="label">廠商 (Vendor)</label>
+      <input class="input" list="vendor-list" id="vendor" placeholder="選擇或輸入廠商">
+      <datalist id="vendor-list"></datalist>
     </div>
 
     <hr>
@@ -132,7 +137,7 @@
       vDl.innerHTML = vendors.map(v => `<option value="${v}">`).join('');
     }
 
-    // --- 相機功能 ---
+    // --- 相機與辨識功能保持不變 ---
     async function runLineScan() {
       try {
         const result = await liff.scanCodeV2();
@@ -188,9 +193,10 @@
         color: document.getElementById('color').value,
         size: document.getElementById('size').value,
         qty: document.getElementById('qty').value,
+        price: document.getElementById('price').value, // 新增：傳送售價
         vendor: document.getElementById('vendor').value,
         operator: currentUser.name,
-        operatorId: currentUser.id  // 傳遞唯一 ID
+        operatorId: currentUser.id
       };
 
       if (!payload.buyer || !payload.sku || !payload.vendor) return alert("請填寫買家、貨號與廠商");
@@ -209,6 +215,7 @@
           document.getElementById('color').value = "";
           document.getElementById('size').value = "";
           document.getElementById('qty').value = "1";
+          document.getElementById('price').value = ""; // 清空售價
           document.getElementById('vendor').value = "";
           
           const newData = await callGAS('getInitialData');
