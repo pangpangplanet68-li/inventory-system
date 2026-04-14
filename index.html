@@ -3,54 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>進貨管理系統</title>
+  <title>留貨管理系統</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <style>
+    #camera-container { position: relative; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; border: 2px solid #dbdbdb; }
+    #video { width: 100%; display: block; }
+    #scanner-line { position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #ff3860; box-shadow: 0 0 10px #ff3860; transform: translateY(-50%); }
+    .loading-overlay { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 100; justify-content: center; align-items: center; flex-direction: column; }
+    .denied-msg { display: none; text-align: center; padding: 50px 20px; }
+  </style>
 </head>
 <body class="p-4">
-  <div id="loading" class="container has-text-centered" style="padding-top: 100px;">
-    <button class="button is-loading is-white is-large"></button>
-    <p>系統初始化中...</p>
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="button is-loading is-large is-ghost"></div>
+    <p id="loading-text" class="mt-2">正在載入系統...</p>
   </div>
 
-  <div id="app" class="container" style="display:none;">
-    <div class="card">
-      <header class="card-header has-background-link">
-        <p class="card-header-title has-text-white">📝 新增進貨紀錄</p>
-      </header>
-      <div class="card-content">
-        <p class="mb-4">歡迎，<span id="userName" class="has-text-weight-bold">管理員</span></p>
-        <form id="purchaseForm">
-          <div class="field">
-            <label class="label">採購人員</label>
-            <input class="input" list="buyer-list" name="buyer" required>
-            <datalist id="buyer-list"></datalist>
-          </div>
-          <div class="field">
-            <label class="label">供應商</label>
-            <div class="select is-fullwidth">
-              <select name="vendor" id="vendor-select" required></select>
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">品項描述</label>
-            <textarea class="textarea" name="itemDescription" required></textarea>
-          </div>
-          <div class="field">
-            <label class="label">總金額</label>
-            <input class="input" type="number" name="amount" required>
-          </div>
-          <button type="submit" id="submitBtn" class="button is-link is-fullwidth is-large">確認送出</button>
-        </form>
+  <div id="denied-container" class="denied-msg">
+    <h1 class="title is-4 has-text-danger">⚠️ 存取受限</h1>
+    <p>您的帳號尚未獲得管理權限。</p>
+    <p class="is-size-7 mt-4 has-text-grey">Your ID: <span id="my-user-id"></span></p>
+  </div>
+
+  <div id="app" style="display:none;">
+    <h1 class="title is-5 has-text-centered">📦 留貨管理系統</h1>
+    
+    <div class="field">
+      <label class="label">買家 (Buyer)</label>
+      <input class="input" list="buyer-list" id="buyer" placeholder="選擇或輸入買家">
+      <datalist id="buyer-list"></datalist>
+    </div>
+
+    <div class="field">
+      <label class="label">商品貨號 (SKU)</label>
+      <div id="camera-container" style="display:none;">
+        <video id="video" autoplay playsinline></video>
+        <div id="scanner-line"></div>
+        <canvas id="canvas" style="display:none;"></canvas>
+      </div>
+      
+      <input class="input mb-2" id="sku" placeholder="請掃描或輸入貨號">
+      
+      <div class="buttons">
+        <button class="button is-link is-light is-flexible" onclick="runLineScan()">📷 掃條碼</button>
+        <button id="ocr-toggle" class="button is-info is-light is-flexible" onclick="toggleOCR()">🔍 辨識文字</button>
+      </div>
+      <button id="capture-btn" class="button is-danger is-fullwidth mt-1" style="display:none;" onclick="executeOCR()">📸 擷取並辨識</button>
+    </div>
+
+    <div class="columns is-mobile">
+      <div class="column"><label class="label">顏色</label><input class="input" id="color"></div>
+      <div class="column"><label class="label">尺寸</label><input class="input" id="size"></div>
+    </div>
+
+    <div class="columns is-mobile">
+      <div class="column is-5">
+        <label class="label">數量</label>
+        <input class="input" type="number" id="qty" value="1">
+      </div>
+      <div class="column">
+        <label class="label">廠商</label>
+        <div class="select is-fullwidth">
+          <select id="vendor"></select>
+        </div>
       </div>
     </div>
+
+    <hr>
+    <button class="button is-success is-fullwidth is-large" onclick="submitData()">確認送出</button>
+    <p class="has-text-centered mt-2 is-size-7 has-text-grey">操作員: <span id="op-name">-</span></p>
   </div>
 
   <script>
     // --- 配置區 ---
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzrJmo7Ylz2LsyXJFavicvVqZagixYa0E9tVhbmgHEnMi4e4quy-ych99P_3jpj2isD7g/exec"; // 貼上剛才第一步複製的網址
+    const GAS_URL = "你的新_GAS_API網址"; // <--- 務必換成你的 GAS 網址
+    let videoStream = null;
 
-    // 通用呼叫 GAS 函數
+    // 通用呼叫 GAS API 函數
     async function callGAS(action, formData = null) {
       const response = await fetch(GAS_URL, {
         method: 'POST',
@@ -62,45 +93,134 @@
     window.onload = async () => {
       try {
         const serverData = await callGAS('getInitialData');
-        await liff.init({ liffId: serverData.liffId });
-
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-
-        const profile = await liff.getProfile();
-        if (!serverData.adminList.includes(profile.userId)) {
-          alert("您沒有權限使用此系統");
-          return;
-        }
-
-        // 初始化下拉選單
-        document.getElementById('userName').innerText = profile.displayName;
-        serverData.buyers.forEach(b => document.getElementById('buyer-list').innerHTML += `<option value="${b}">`);
-        serverData.vendors.forEach(v => document.getElementById('vendor-select').innerHTML += `<option value="${v}">${v}</option>`);
-
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-
-        // 綁定表單送出事件
-        document.getElementById('purchaseForm').onsubmit = async (e) => {
-          e.preventDefault();
-          const btn = document.getElementById('submitBtn');
-          btn.classList.add('is-loading');
-          
-          const formData = Object.fromEntries(new FormData(e.target));
-          await callGAS('processForm', formData);
-          
-          btn.classList.remove('is-loading');
-          alert('✅ 送出成功！');
-          e.target.reset();
-        };
-
+        await startLiff(serverData);
       } catch (err) {
-        alert("系統載入出錯: " + err.message);
+        alert("系統啟動失敗，請檢查 GAS 部署與網址: " + err);
       }
     };
+
+    async function startLiff(serverData) {
+      try {
+        await liff.init({ liffId: serverData.liffId });
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        
+        const profile = await liff.getProfile();
+        const userId = profile.userId;
+        
+        // 權限檢查
+        if (!serverData.adminList.includes(userId)) {
+          document.getElementById('loading-overlay').style.display = 'none';
+          document.getElementById('denied-container').style.display = 'block';
+          document.getElementById('my-user-id').innerText = userId;
+          return;
+        }
+        
+        // 設定介面資料
+        document.getElementById('op-name').innerText = profile.displayName;
+        const dl = document.getElementById('buyer-list');
+        const vs = document.getElementById('vendor');
+        
+        serverData.buyers.forEach(b => dl.innerHTML += `<option value="${b}">`);
+        serverData.vendors.forEach(v => vs.innerHTML += `<option value="${v}">${v}</option>`);
+        
+        document.getElementById('loading-overlay').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+      } catch (err) { alert("LIFF 啟動錯誤: " + err); }
+    }
+
+    // --- 相機與掃描功能 ---
+    async function runLineScan() {
+      try {
+        const result = await liff.scanCodeV2();
+        document.getElementById('sku').value = result.value;
+      } catch (e) { console.error("掃描取消或失敗", e); }
+    }
+
+    async function toggleOCR() {
+      const container = document.getElementById('camera-container');
+      const btn = document.getElementById('ocr-toggle');
+      const capBtn = document.getElementById('capture-btn');
+      const video = document.getElementById('video');
+      
+      if (container.style.display === 'none') {
+        try {
+          videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+          video.srcObject = videoStream;
+          container.style.display = 'block';
+          capBtn.style.display = 'block';
+          btn.innerText = '關閉相機';
+        } catch (e) { alert("無法開啟相機，請檢查權限"); }
+      } else { 
+        closeOCR(); 
+      }
+    }
+
+    function closeOCR() {
+      if (videoStream) videoStream.getTracks().forEach(t => t.stop());
+      document.getElementById('camera-container').style.display = 'none';
+      document.getElementById('capture-btn').style.display = 'none';
+      document.getElementById('ocr-toggle').innerText = '🔍 辨識文字';
+    }
+
+    async function executeOCR() {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const overlay = document.getElementById('loading-overlay');
+      const loadingText = document.getElementById('loading-text');
+      
+      loadingText.innerText = "OCR 辨識中...";
+      overlay.style.display = 'flex';
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      
+      try {
+        const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+        // 清理字串，只保留字母、數字、連字號
+        document.getElementById('sku').value = text.replace(/[^A-Z0-9-]/g, '').trim();
+        closeOCR();
+      } catch (e) { alert("辨識失敗"); }
+      
+      overlay.style.display = 'none';
+      loadingText.innerText = "正在處理...";
+    }
+
+    async function submitData() {
+      const btn = document.querySelector('.is-success');
+      const payload = {
+        buyer: document.getElementById('buyer').value,
+        sku: document.getElementById('sku').value,
+        color: document.getElementById('color').value,
+        size: document.getElementById('size').value,
+        qty: document.getElementById('qty').value,
+        vendor: document.getElementById('vendor').value,
+        operator: document.getElementById('op-name').innerText
+      };
+
+      if (!payload.buyer || !payload.sku) return alert("請填寫買家與貨號");
+
+      btn.classList.add('is-loading');
+      document.getElementById('loading-overlay').style.display = 'flex';
+
+      try {
+        const res = await callGAS('processForm', payload);
+        document.getElementById('loading-overlay').style.display = 'none';
+        btn.classList.remove('is-loading');
+        
+        alert(res.message);
+        if(res.status === "success") {
+          // 清空部分欄位以便連續輸入，或關閉視窗
+          document.getElementById('sku').value = "";
+          document.getElementById('qty').value = "1";
+          // liff.closeWindow(); // 如果要自動關閉可開啟這行
+        }
+      } catch (e) {
+        alert("送出失敗: " + e);
+        btn.classList.remove('is-loading');
+        document.getElementById('loading-overlay').style.display = 'none';
+      }
+    }
   </script>
 </body>
 </html>
