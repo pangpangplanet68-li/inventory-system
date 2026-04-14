@@ -71,16 +71,18 @@
     </div>
 
     <hr>
-    <button class="button is-success is-fullwidth is-large" onclick="submitData()">確認送出</button>
-    <p class="has-text-centered mt-2 is-size-7 has-text-grey">操作員: <span id="op-name">-</span></p>
+    <button id="submit-btn" class="button is-success is-fullwidth is-large" onclick="submitData()">確認送出</button>
+    <div class="has-text-centered mt-2 is-size-7 has-text-grey">
+      操作員: <span id="op-name">-</span><br>
+      <span id="op-id" style="font-size: 0.8em; opacity: 0.6;"></span>
+    </div>
   </div>
 
   <script>
-    // --- 配置區 ---
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzrJmo7Ylz2LsyXJFavicvVqZagixYa0E9tVhbmgHEnMi4e4quy-ych99P_3jpj2isD7g/exec"; 
     let videoStream = null;
+    let currentUser = { id: "", name: "" };
 
-    // 通用呼叫 GAS API 函數
     async function callGAS(action, formData = null) {
       const response = await fetch(GAS_URL, {
         method: 'POST',
@@ -94,7 +96,7 @@
         const serverData = await callGAS('getInitialData');
         await startLiff(serverData);
       } catch (err) {
-        alert("系統啟動失敗，請檢查 GAS 部署與網址: " + err);
+        alert("系統啟動失敗: " + err);
       }
     };
 
@@ -102,61 +104,55 @@
       try {
         await liff.init({ liffId: serverData.liffId });
         if (!liff.isLoggedIn()) { liff.login(); return; }
-        
         const profile = await liff.getProfile();
-        const userId = profile.userId;
         
-        // 權限檢查
-        if (!serverData.adminList.includes(userId)) {
+        currentUser.id = profile.userId;
+        currentUser.name = profile.displayName;
+
+        if (!serverData.adminList.includes(currentUser.id)) {
           document.getElementById('loading-overlay').style.display = 'none';
           document.getElementById('denied-container').style.display = 'block';
-          document.getElementById('my-user-id').innerText = userId;
+          document.getElementById('my-user-id').innerText = currentUser.id;
           return;
         }
-        
-        // 設定介面資料
-        document.getElementById('op-name').innerText = profile.displayName;
-        
-        // 渲染買家與廠商的 datalist
-        const buyerDl = document.getElementById('buyer-list');
-        const vendorDl = document.getElementById('vendor-list');
-        
-        buyerDl.innerHTML = "";
-        vendorDl.innerHTML = "";
 
-        serverData.buyers.forEach(b => buyerDl.innerHTML += `<option value="${b}">`);
-        serverData.vendors.forEach(v => vendorDl.innerHTML += `<option value="${v}">`);
+        document.getElementById('op-name').innerText = currentUser.name;
+        document.getElementById('op-id').innerText = currentUser.id;
+        updateDatalists(serverData.buyers, serverData.vendors);
         
         document.getElementById('loading-overlay').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-      } catch (err) { alert("LIFF 啟動錯誤: " + err); }
+      } catch (err) { alert("LIFF 錯誤: " + err); }
     }
 
-    // --- 相機與掃描功能 ---
+    function updateDatalists(buyers, vendors) {
+      const bDl = document.getElementById('buyer-list');
+      const vDl = document.getElementById('vendor-list');
+      bDl.innerHTML = buyers.map(b => `<option value="${b}">`).join('');
+      vDl.innerHTML = vendors.map(v => `<option value="${v}">`).join('');
+    }
+
+    // --- 相機功能 ---
     async function runLineScan() {
       try {
         const result = await liff.scanCodeV2();
         document.getElementById('sku').value = result.value;
-      } catch (e) { console.error("掃描取消或失敗", e); }
+      } catch (e) { console.error(e); }
     }
 
     async function toggleOCR() {
       const container = document.getElementById('camera-container');
       const btn = document.getElementById('ocr-toggle');
-      const capBtn = document.getElementById('capture-btn');
       const video = document.getElementById('video');
-      
       if (container.style.display === 'none') {
         try {
           videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
           video.srcObject = videoStream;
           container.style.display = 'block';
-          capBtn.style.display = 'block';
+          document.getElementById('capture-btn').style.display = 'block';
           btn.innerText = '關閉相機';
-        } catch (e) { alert("無法開啟相機，請檢查權限"); }
-      } else { 
-        closeOCR(); 
-      }
+        } catch (e) { alert("無法開啟相機"); }
+      } else { closeOCR(); }
     }
 
     function closeOCR() {
@@ -170,27 +166,22 @@
       const video = document.getElementById('video');
       const canvas = document.getElementById('canvas');
       const overlay = document.getElementById('loading-overlay');
-      const loadingText = document.getElementById('loading-text');
-      
-      loadingText.innerText = "OCR 辨識中...";
+      document.getElementById('loading-text').innerText = "辨識中...";
       overlay.style.display = 'flex';
-      
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       canvas.getContext('2d').drawImage(video, 0, 0);
-      
       try {
         const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
         document.getElementById('sku').value = text.replace(/[^A-Z0-9-]/g, '').trim();
         closeOCR();
       } catch (e) { alert("辨識失敗"); }
-      
       overlay.style.display = 'none';
-      loadingText.innerText = "正在處理...";
     }
 
+    // --- 提交與清空功能 ---
     async function submitData() {
-      const btn = document.querySelector('.is-success');
+      const btn = document.getElementById('submit-btn');
       const payload = {
         buyer: document.getElementById('buyer').value,
         sku: document.getElementById('sku').value,
@@ -198,7 +189,8 @@
         size: document.getElementById('size').value,
         qty: document.getElementById('qty').value,
         vendor: document.getElementById('vendor').value,
-        operator: document.getElementById('op-name').innerText
+        operator: currentUser.name,
+        operatorId: currentUser.id  // 傳遞唯一 ID
       };
 
       if (!payload.buyer || !payload.sku || !payload.vendor) return alert("請填寫買家、貨號與廠商");
@@ -208,19 +200,23 @@
 
       try {
         const res = await callGAS('processForm', payload);
-        document.getElementById('loading-overlay').style.display = 'none';
-        btn.classList.remove('is-loading');
-        
         alert(res.message);
+        
         if(res.status === "success") {
-          // 清空部分欄位以便連續輸入
+          // 清空表單
+          document.getElementById('buyer').value = "";
           document.getElementById('sku').value = "";
-          document.getElementById('qty').value = "1";
           document.getElementById('color').value = "";
           document.getElementById('size').value = "";
+          document.getElementById('qty').value = "1";
+          document.getElementById('vendor').value = "";
+          
+          const newData = await callGAS('getInitialData');
+          updateDatalists(newData.buyers, newData.vendors);
         }
       } catch (e) {
         alert("送出失敗: " + e);
+      } finally {
         btn.classList.remove('is-loading');
         document.getElementById('loading-overlay').style.display = 'none';
       }
