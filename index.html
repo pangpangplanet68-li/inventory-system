@@ -7,9 +7,6 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    #camera-container { position: relative; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; border: 2px solid #dbdbdb; }
-    #video { width: 100%; display: block; }
-    #scanner-line { position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #ff3860; box-shadow: 0 0 10px #ff3860; transform: translateY(-50%); }
     .loading-overlay { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 100; justify-content: center; align-items: center; flex-direction: column; }
     .denied-msg { display: none; text-align: center; padding: 50px 20px; }
   </style>
@@ -36,10 +33,15 @@
     </div>
 
     <div class="field">
+      <label class="label">買家聯絡平台</label>
+      <input class="input" list="platform-list" id="platform" placeholder="例如：FB, LINE, 蝦皮">
+      <datalist id="platform-list"></datalist>
+    </div>
+
+    <div class="field">
       <label class="label">商品貨號 (SKU)</label>
-      <input class="input mb-2" id="sku" placeholder="請輸入貨號">
-      
-      </div>
+      <input class="input" id="sku" placeholder="請輸入貨號">
+    </div>
 
     <div class="columns is-mobile">
       <div class="column"><label class="label">顏色</label><input class="input" id="color"></div>
@@ -73,7 +75,6 @@
 
   <script>
     const GAS_URL = "https://script.google.com/macros/s/AKfycbzrJmo7Ylz2LsyXJFavicvVqZagixYa0E9tVhbmgHEnMi4e4quy-ych99P_3jpj2isD7g/exec"; 
-    let videoStream = null;
     let currentUser = { id: "", name: "" };
 
     async function callGAS(action, formData = null) {
@@ -88,9 +89,7 @@
       try {
         const serverData = await callGAS('getInitialData');
         await startLiff(serverData);
-      } catch (err) {
-        alert("系統啟動失敗: " + err);
-      }
+      } catch (err) { alert("系統啟動失敗: " + err); }
     };
 
     async function startLiff(serverData) {
@@ -111,72 +110,24 @@
 
         document.getElementById('op-name').innerText = currentUser.name;
         document.getElementById('op-id').innerText = currentUser.id;
-        updateDatalists(serverData.buyers, serverData.vendors);
+        updateDatalists(serverData.buyers, serverData.vendors, serverData.platforms);
         
         document.getElementById('loading-overlay').style.display = 'none';
         document.getElementById('app').style.display = 'block';
       } catch (err) { alert("LIFF 錯誤: " + err); }
     }
 
-    function updateDatalists(buyers, vendors) {
-      const bDl = document.getElementById('buyer-list');
-      const vDl = document.getElementById('vendor-list');
-      bDl.innerHTML = buyers.map(b => `<option value="${b}">`).join('');
-      vDl.innerHTML = vendors.map(v => `<option value="${v}">`).join('');
+    function updateDatalists(buyers, vendors, platforms) {
+      document.getElementById('buyer-list').innerHTML = buyers.map(b => `<option value="${b}">`).join('');
+      document.getElementById('vendor-list').innerHTML = vendors.map(v => `<option value="${v}">`).join('');
+      document.getElementById('platform-list').innerHTML = platforms.map(p => `<option value="${p}">`).join('');
     }
-
-    /* --- [註解中] 相機與辨識功能 ---
-    async function runLineScan() {
-      try {
-        const result = await liff.scanCodeV2();
-        document.getElementById('sku').value = result.value;
-      } catch (e) { console.error(e); }
-    }
-
-    async function toggleOCR() {
-      const container = document.getElementById('camera-container');
-      const btn = document.getElementById('ocr-toggle');
-      const video = document.getElementById('video');
-      if (container.style.display === 'none') {
-        try {
-          videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-          video.srcObject = videoStream;
-          container.style.display = 'block';
-          document.getElementById('capture-btn').style.display = 'block';
-          btn.innerText = '關閉相機';
-        } catch (e) { alert("無法開啟相機"); }
-      } else { closeOCR(); }
-    }
-
-    function closeOCR() {
-      if (videoStream) videoStream.getTracks().forEach(t => t.stop());
-      document.getElementById('camera-container').style.display = 'none';
-      document.getElementById('capture-btn').style.display = 'none';
-      document.getElementById('ocr-toggle').innerText = '🔍 辨識文字';
-    }
-
-    async function executeOCR() {
-      const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      const overlay = document.getElementById('loading-overlay');
-      document.getElementById('loading-text').innerText = "辨識中...";
-      overlay.style.display = 'flex';
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext('2d').drawImage(video, 0, 0);
-      try {
-        const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
-        document.getElementById('sku').value = text.replace(/[^A-Z0-9-]/g, '').trim();
-        closeOCR();
-      } catch (e) { alert("辨識失敗"); }
-      overlay.style.display = 'none';
-    }
-    --------------------------------- */
 
     async function submitData() {
       const btn = document.getElementById('submit-btn');
       const payload = {
         buyer: document.getElementById('buyer').value,
+        platform: document.getElementById('platform').value,
         sku: document.getElementById('sku').value,
         color: document.getElementById('color').value,
         size: document.getElementById('size').value,
@@ -187,7 +138,9 @@
         operatorId: currentUser.id
       };
 
-      if (!payload.buyer || !payload.sku || !payload.vendor) return alert("請填寫買家、貨號與廠商");
+      if (!payload.buyer || !payload.sku || !payload.vendor || !payload.platform) {
+        return alert("請填寫買家、平台、貨號與廠商");
+      }
 
       btn.classList.add('is-loading');
       document.getElementById('loading-overlay').style.display = 'flex';
@@ -197,16 +150,16 @@
         alert(res.message);
         
         if(res.status === "success") {
+          // 清空部分表單，保留「平台」與「廠商」方便連續錄入同一批貨
           document.getElementById('buyer').value = "";
           document.getElementById('sku').value = "";
           document.getElementById('color').value = "";
           document.getElementById('size').value = "";
           document.getElementById('qty').value = "1";
           document.getElementById('price').value = "";
-          document.getElementById('vendor').value = "";
           
           const newData = await callGAS('getInitialData');
-          updateDatalists(newData.buyers, newData.vendors);
+          updateDatalists(newData.buyers, newData.vendors, newData.platforms);
         }
       } catch (e) {
         alert("送出失敗: " + e);
