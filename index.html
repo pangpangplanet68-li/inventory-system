@@ -6,7 +6,6 @@
   <title>留貨管理系統</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <style>
     #camera-container { position: relative; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; border: 2px solid #dbdbdb; }
     #video { width: 100%; display: block; }
@@ -38,20 +37,9 @@
 
     <div class="field">
       <label class="label">商品貨號 (SKU)</label>
-      <div id="camera-container" style="display:none;">
-        <video id="video" autoplay playsinline></video>
-        <div id="scanner-line"></div>
-        <canvas id="canvas" style="display:none;"></canvas>
-      </div>
+      <input class="input mb-2" id="sku" placeholder="請輸入貨號">
       
-      <input class="input mb-2" id="sku" placeholder="請掃描或輸入貨號">
-      
-      <div class="buttons">
-        <button class="button is-link is-light is-flexible" onclick="runLineScan()">📷 掃條碼</button>
-        <button id="ocr-toggle" class="button is-info is-light is-flexible" onclick="toggleOCR()">🔍 辨識文字</button>
       </div>
-      <button id="capture-btn" class="button is-danger is-fullwidth mt-1" style="display:none;" onclick="executeOCR()">📸 擷取並辨識</button>
-    </div>
 
     <div class="columns is-mobile">
       <div class="column"><label class="label">顏色</label><input class="input" id="color"></div>
@@ -133,11 +121,11 @@
     function updateDatalists(buyers, vendors) {
       const bDl = document.getElementById('buyer-list');
       const vDl = document.getElementById('vendor-list');
-      // 使用 join('') 避免逗號出現，確保清單乾淨
       bDl.innerHTML = buyers.map(b => `<option value="${b}">`).join('');
       vDl.innerHTML = vendors.map(v => `<option value="${v}">`).join('');
     }
 
+    /* --- [註解中] 相機與辨識功能 ---
     async function runLineScan() {
       try {
         const result = await liff.scanCodeV2();
@@ -171,9 +159,7 @@
       const video = document.getElementById('video');
       const canvas = document.getElementById('canvas');
       const overlay = document.getElementById('loading-overlay');
-      const loadingText = document.getElementById('loading-text');
-      
-      loadingText.innerText = "辨識中...";
+      document.getElementById('loading-text').innerText = "辨識中...";
       overlay.style.display = 'flex';
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -183,10 +169,9 @@
         document.getElementById('sku').value = text.replace(/[^A-Z0-9-]/g, '').trim();
         closeOCR();
       } catch (e) { alert("辨識失敗"); }
-      
       overlay.style.display = 'none';
-      loadingText.innerText = "正在處理..."; // 修復點：將文字回復
     }
+    --------------------------------- */
 
     async function submitData() {
       const btn = document.getElementById('submit-btn');
@@ -212,7 +197,6 @@
         alert(res.message);
         
         if(res.status === "success") {
-          // 清空表單
           document.getElementById('buyer').value = "";
           document.getElementById('sku').value = "";
           document.getElementById('color').value = "";
@@ -221,7 +205,6 @@
           document.getElementById('price').value = "";
           document.getElementById('vendor').value = "";
           
-          // 送出成功後立即同步一次最新名單
           const newData = await callGAS('getInitialData');
           updateDatalists(newData.buyers, newData.vendors);
         }
