@@ -133,11 +133,11 @@
     function updateDatalists(buyers, vendors) {
       const bDl = document.getElementById('buyer-list');
       const vDl = document.getElementById('vendor-list');
+      // 使用 join('') 避免逗號出現，確保清單乾淨
       bDl.innerHTML = buyers.map(b => `<option value="${b}">`).join('');
       vDl.innerHTML = vendors.map(v => `<option value="${v}">`).join('');
     }
 
-    // --- 相機與辨識功能保持不變 ---
     async function runLineScan() {
       try {
         const result = await liff.scanCodeV2();
@@ -171,7 +171,9 @@
       const video = document.getElementById('video');
       const canvas = document.getElementById('canvas');
       const overlay = document.getElementById('loading-overlay');
-      document.getElementById('loading-text').innerText = "辨識中...";
+      const loadingText = document.getElementById('loading-text');
+      
+      loadingText.innerText = "辨識中...";
       overlay.style.display = 'flex';
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -181,10 +183,11 @@
         document.getElementById('sku').value = text.replace(/[^A-Z0-9-]/g, '').trim();
         closeOCR();
       } catch (e) { alert("辨識失敗"); }
+      
       overlay.style.display = 'none';
+      loadingText.innerText = "正在處理..."; // 修復點：將文字回復
     }
 
-    // --- 提交與清空功能 ---
     async function submitData() {
       const btn = document.getElementById('submit-btn');
       const payload = {
@@ -193,7 +196,7 @@
         color: document.getElementById('color').value,
         size: document.getElementById('size').value,
         qty: document.getElementById('qty').value,
-        price: document.getElementById('price').value, // 新增：傳送售價
+        price: document.getElementById('price').value,
         vendor: document.getElementById('vendor').value,
         operator: currentUser.name,
         operatorId: currentUser.id
@@ -215,9 +218,10 @@
           document.getElementById('color').value = "";
           document.getElementById('size').value = "";
           document.getElementById('qty').value = "1";
-          document.getElementById('price').value = ""; // 清空售價
+          document.getElementById('price').value = "";
           document.getElementById('vendor').value = "";
           
+          // 送出成功後立即同步一次最新名單
           const newData = await callGAS('getInitialData');
           updateDatalists(newData.buyers, newData.vendors);
         }
