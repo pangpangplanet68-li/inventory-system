@@ -158,8 +158,8 @@
           document.getElementById('qty').value = "1";
           document.getElementById('price').value = "";
           
-          const newData = await callGAS('getInitialData');
-          updateDatalists(newData.buyers, newData.vendors, newData.platforms);
+          //const newData = await callGAS('getInitialData');
+          //updateDatalists(newData.buyers, newData.vendors, newData.platforms);
         }
       } catch (e) {
         alert("送出失敗: " + e);
